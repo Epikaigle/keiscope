@@ -186,22 +186,27 @@ class KeiyoushiRepository(private val context: Context) {
         val safePath = path.replace('/', '-').replace(Regex("[^A-Za-z0-9._-]"), "_")
         val versionKey = File(historyDir, "version-$safePath-$sha.txt")
         if (versionKey.exists()) return versionKey.readText().ifBlank { null }
+        var unavailable = false
         for (filename in listOf("build.gradle.kts", "build.gradle")) {
             val rawUrl = "https://raw.githubusercontent.com/keiyoushi/extensions-source/$sha/$path/$filename"
-            val source = try { Net.read(rawUrl, "text/plain") } catch (_: Exception) { continue }
+            val source = try { Net.read(rawUrl, "text/plain") } catch (e: Exception) {
+                if (e.message?.contains("404") != true) unavailable = true
+                continue
+            }
             val versionCode = Regex("(?:extVersionCode|versionCode)\\s*(?:=|\\s)\\s*(\\d+)").find(source)?.groupValues?.get(1)
             val libVersion = Regex("libVersion\\s*=\\s*\"([0-9.]+)\"").find(source)?.groupValues?.get(1)
             val directVersion = Regex("versionName\\s*=\\s*\"([^\"]+)\"").find(source)?.groupValues?.get(1)
             val version = when {
                 libVersion != null && versionCode != null -> "$libVersion.$versionCode"
-                versionCode != null -> "1.4.$versionCode" // legacy default; marked as inferred in UI
+                versionCode != null -> null // no verified public version without libVersion
                 directVersion != null -> directVersion
                 else -> null
             }
             versionKey.writeText(version.orEmpty())
             return version
         }
-        versionKey.writeText("")
+        // Cache missing files, but never cache transient network/API failures as no history.
+        if (!unavailable) versionKey.writeText("")
         return null
     }
 }
