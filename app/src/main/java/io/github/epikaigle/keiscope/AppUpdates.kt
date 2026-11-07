@@ -27,7 +27,13 @@ object AppUpdates {
     private const val LATEST_API = "https://api.github.com/repos/Epikaigle/keiscope/releases/latest"
 
     suspend fun check(): AvailableUpdate? = withContext(Dispatchers.IO) {
-        val release = JSONObject(Net.read(LATEST_API))
+        val release = try {
+            JSONObject(Net.read(LATEST_API))
+        } catch (e: Exception) {
+            // First launch may precede the first GitHub Release.
+            if (e.message?.contains("404") == true) return@withContext null
+            throw e
+        }
         val tag = release.optString("tag_name", "")
         val current = BuildConfig.VERSION_NAME
         if (!isNewer(tag, current)) return@withContext null
@@ -104,10 +110,16 @@ object AppUpdates {
     fun requestInstallation(context: Context, apk: File) {
         val packageManager = context.packageManager
         // Prevent an unrelated APK from ever reaching the platform installer.
-        val archive = packageManager.getPackageArchiveInfo(apk.absolutePath, PackageManager.PackageInfoFlags.of(0))
+        val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+        val archive = packageManager.getPackageArchiveInfo(apk.absolutePath, flags)
         require(archive?.packageName == context.packageName) { "L'APK ne correspond pas à KeiScope" }
-        val current = packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+        val current = packageManager.getPackageInfo(context.packageName, flags)
         require(archive.longVersionCode > current.longVersionCode) { "La version téléchargée n'est pas plus récente" }
+        val installedSignatures = current.signingInfo?.apkContentsSigners?.toSet().orEmpty()
+        val candidateSignatures = archive.signingInfo?.apkContentsSigners?.toSet().orEmpty()
+        require(installedSignatures.isNotEmpty() && installedSignatures == candidateSignatures) {
+            "Signature APK différente : mise à jour refusée"
+        }
         if (!packageManager.canRequestPackageInstalls()) {
             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:${context.packageName}"))
