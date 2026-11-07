@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 /** Small state-holder deliberately kept independent from Mihon internals. */
 class KeiController(private val context: Context) {
@@ -38,6 +39,7 @@ class KeiController(private val context: Context) {
     var loadingHistory by mutableStateOf(false)
         private set
     private var historyPage = 1
+    private var historyJob: Job? = null
 
     var checkingUpdate by mutableStateOf(false)
         private set
@@ -89,15 +91,21 @@ class KeiController(private val context: Context) {
     }
 
     fun showDetails(extension: ExtensionInfo) {
+        historyJob?.cancel()
+        loadingHistory = false
         selected = extension
         history = emptyList()
         historyError = null
         historyHasMore = false
         historyPage = 1
-        scope.launch { loadHistory(extension, reset = true) }
+        historyJob = scope.launch { loadHistory(extension, reset = true) }
     }
 
-    fun closeDetails() { selected = null }
+    fun closeDetails() {
+        historyJob?.cancel()
+        selected = null
+        loadingHistory = false
+    }
 
     suspend fun loadHistory(ext: ExtensionInfo, reset: Boolean) {
         if (loadingHistory) return
@@ -113,7 +121,7 @@ class KeiController(private val context: Context) {
         } catch (e: Exception) {
             if (selected?.pkg == ext.pkg) historyError = e.message ?: "Impossible de lire GitHub."
         } finally {
-            loadingHistory = false
+            if (selected?.pkg == ext.pkg) loadingHistory = false
         }
     }
 
