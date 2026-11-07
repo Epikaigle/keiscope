@@ -56,8 +56,9 @@ object AppUpdates {
         val r = remote.removePrefix("v").split('.').map { it.toIntOrNull() ?: return false }
         val c = current.removePrefix("v").split('.').map { it.toIntOrNull() ?: return false }
         for (i in 0 until maxOf(r.size, c.size)) {
-            val diff = (r.getOrElse(i) { 0 }) - (c.getOrElse(i) { 0 })
-            if (diff != 0) return diff > 0
+            val a = r.getOrElse(i) { 0 }
+            val b = c.getOrElse(i) { 0 }
+            if (a != b) return a > b
         }
         return false
     }
@@ -82,14 +83,22 @@ object AppUpdates {
                         val buffer = ByteArray(64 * 1024)
                         var count: Int
                         var received = 0L
+                        var lastProgress = -1
                         while (input.read(buffer).also { count = it } != -1) {
                             output.write(buffer, 0, count)
                             digest.update(buffer, 0, count)
                             received += count
-                            if (total > 0) onProgress((received * 100 / total).toInt().coerceIn(0, 100))
+                            if (total > 0) {
+                                val percent = (received * 100 / total).toInt().coerceIn(0, 100)
+                                if (percent != lastProgress) {
+                                    lastProgress = percent
+                                    withContext(Dispatchers.Main) { onProgress(percent) }
+                                }
+                            }
                         }
                     }
                 }
+                withContext(Dispatchers.Main) { onProgress(100) }
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 if (update.sha256 != null && !actual.equals(update.sha256, true)) {
                     throw IllegalStateException("L'empreinte SHA-256 de l'APK ne correspond pas")
