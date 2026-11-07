@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -285,35 +287,42 @@ private fun ExtensionDetails(controller: KeiController) {
 @Composable
 private fun VersionGroup(version: String, changes: List<CommitInfo>) {
     val context = LocalContext.current
-    var expanded by remember(version) { mutableStateOf(true) }
+    var expanded by remember(version) { mutableStateOf(false) }
     ElevatedCard {
         Column {
-            Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (version == "Version non identifiée") version else "Version $version",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${changes.size} modification(s) retrouvée(s)",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (version == "Version non identifiée") "Autres modifications" else "v$version",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${changes.size} commits", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(if (expanded) "Réduire" else "Ouvrir", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary)
+                Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Réduire" else "Déplier")
             }
             if (expanded) {
                 HorizontalDivider()
                 changes.forEach { change ->
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(change.title, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(5.dp))
-                        Text("${change.date} • ${change.shortSha}", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Column(verticalArrangement = Arrangement.spacedBy(0.dp),
-                            horizontalAlignment = Alignment.Start) {
-                            TextButton(onClick = { context.openBrowser(change.url) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                                Text("Commit GitHub", style = MaterialTheme.typography.labelSmall)
-                            }
+                    Column(Modifier.fillMaxWidth().clickable { context.openBrowser(change.url) }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(change.title, modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.width(8.dp))
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, "Ouvrir sur GitHub",
+                                Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${change.date} · ${change.shortSha}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                             change.pullRequest?.let { link ->
-                                TextButton(onClick = { context.openBrowser(link) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                                    Text("Pull request", style = MaterialTheme.typography.labelSmall)
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = { context.openBrowser(link) },
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                    Text("PR", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -329,67 +338,54 @@ private fun VersionGroup(version: String, changes: List<CommitInfo>) {
 private fun SettingsScreen(controller: KeiController) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Mises à jour de KeiScope", style = MaterialTheme.typography.titleLarge)
-            Text("Version ${BuildConfig.VERSION_NAME} • Pixel 7 Pro • Android 17",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("KeiScope · v${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.titleMedium)
         }
         item {
             ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Update, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Vérifier les mises à jour", style = MaterialTheme.typography.titleMedium)
+                        Text("Mises à jour", Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium)
+                        Icon(Icons.Default.Update, null)
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text("Les nouvelles versions de l'application proviennent exclusivement des GitHub Releases du projet.",
-                        style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(12.dp))
                     Button(onClick = { scope.launch { controller.checkUpdate(silent = false) } },
+                        modifier = Modifier.fillMaxWidth(),
                         enabled = !controller.checkingUpdate) {
-                        if (controller.checkingUpdate) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                        if (controller.checkingUpdate)
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         else Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Chercher une nouvelle version")
+                        Text("Vérifier")
                     }
-                    controller.updateMessage?.let {
-                        Spacer(Modifier.height(8.dp))
-                        Text(it, style = MaterialTheme.typography.bodySmall,
+                    controller.updateMessage?.let { message ->
+                        Text(message, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     controller.availableUpdate?.let { available ->
-                        Spacer(Modifier.height(10.dp))
-                        Text("Nouvelle version : ${available.tag}", color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold)
+                        Text(available.tag, color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelLarge)
                         Button(onClick = { scope.launch { controller.downloadAndInstall() } },
-                            enabled = !controller.downloadingUpdate) {
+                            enabled = !controller.downloadingUpdate, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.CloudDownload, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(if (controller.downloadingUpdate) "Téléchargement ${controller.downloadProgress}%" else "Télécharger et installer")
+                            Text(if (controller.downloadingUpdate)
+                                "${controller.downloadProgress} %" else "Installer")
                         }
                     }
                 }
             }
         }
         item {
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Text("Confidentialité", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(5.dp))
-                    Text("La liste des applications installées et les favoris restent sur cet appareil. KeiScope contacte uniquement Keiyoushi et GitHub pour récupérer les données.",
-                        style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedButton(onClick = { context.openBrowser("https://github.com/Epikaigle/keiscope") }) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(17.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Projet GitHub")
-                    }
-                }
+            TextButton(onClick = { context.openBrowser("https://github.com/Epikaigle/keiscope") }) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(17.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("GitHub")
             }
         }
-        item { Text("KeiScope n'est affilié ni à Mihon ni à l'équipe Keiyoushi.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
