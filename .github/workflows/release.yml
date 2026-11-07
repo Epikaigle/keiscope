@@ -50,7 +50,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle --no-daemon :app:assembleRelease
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
       - name: Verify APK signature and prepare release
         shell: bash
         run: |
