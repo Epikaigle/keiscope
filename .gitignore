@@ -11,4 +11,6 @@ local.properties
 *.pem
 *.p12
 *.pfx
+*.env
+.env*
 .DS_Store

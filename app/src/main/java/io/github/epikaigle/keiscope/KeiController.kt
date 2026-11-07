@@ -2,19 +2,20 @@ package io.github.epikaigle.keiscope
 
 import android.content.Context
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.core.content.edit
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.edit
+import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
 
 /** Small state-holder deliberately kept independent from Mihon internals. */
-class KeiController(private val context: Context) {
+class KeiController(private val context: Context) : ViewModel() {
     private val repo = KeiyoushiRepository(context)
     private val preferences = context.getSharedPreferences("preferences", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -63,8 +64,14 @@ class KeiController(private val context: Context) {
             val fromCatalog = catalog.filter { it.pkg in installed || it.pkg in followed }
             val known = fromCatalog.mapTo(mutableSetOf()) { it.pkg }
             val unknown = (installed.keys + followed).filter { it !in known }.map { pkg ->
-                ExtensionInfo(pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() },
-                    pkg, pkg.split('.').getOrNull(4) ?: "?", -1, "?", false)
+                ExtensionInfo(
+                    name = pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() },
+                    pkg = pkg,
+                    lang = pkg.split('.').getOrNull(4) ?: "?",
+                    code = -1,
+                    version = "?",
+                    nsfw = false,
+                )
             }
             return (fromCatalog + unknown).sortedBy { it.name.lowercase() }
         }
@@ -176,4 +183,9 @@ class KeiController(private val context: Context) {
     }
 
     fun dispose() { scope.cancel() }
+
+    override fun onCleared() {
+        super.onCleared()
+        dispose()
+    }
 }

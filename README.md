@@ -2,17 +2,18 @@
 
 **A changelog explorer for Keiyoushi extensions used with Mihon.**
 
-Application Android native open source, conçue pour un **Pixel 7 Pro sous Android 17 (API 37)**. Indépendante de Mihon et de l'équipe Keiyoushi.
+Application Android native open source, compatible avec Android 9.0 jusqu'à Android 17 (API 28 à 37, optimisée pour smartphones, mode paysage et tablettes). Indépendante de Mihon et de l'équipe Keiyoushi.
 
 ## Fonctions disponibles dans le code
 
-- Détecte les APK installés sous `eu.kanade.tachiyomi.extension.*` via `PackageManager` (Android 17).
+- Interface utilisateur responsive et adaptative : NavigationRail latérale et grille adaptative sur tablettes et mode paysage, barre inférieure sur smartphones en mode portrait. Support Edge-to-Edge et thèmes dynamiques Material 3.
+- Détecte les APK installés sous `eu.kanade.tachiyomi.extension.*` via `PackageManager` (Android 9 à 17).
 - Importe les extensions depuis le [vrai catalogue Keiyoushi](https://github.com/keiyoushi/extensions/blob/repo/index.json), et non `index.min.json` (ce dernier est désormais un fichier de compatibilité).
 - Affiche la version disponible, la version installée et un indicateur si la version du catalogue est plus récente.
-- Recherche et favoris (local uniquement).
+- Recherche avec bouton d'effacement rapide et gestion des favoris locaux.
 - Historique Git d'une extension via `keiyoushi/extensions-source`, regroupé par numéro de version extrait de `build.gradle.kts` à chaque commit ; bouton pour afficher commits et PR.
 - Cache local du catalogue et de l'historique (6 heures).
-- Vérifie les releases de `Epikaigle/keiscope` et permet de télécharger une mise à jour, vérifier son SHA-256 si fourni par GitHub, et déclencher le processus d'installation Android.
+- Vérifie les releases de `Epikaigle/keiscope` et permet de télécharger une mise à jour, vérifier son SHA-256 (via le fichier `.sha256` de la release), et déclencher le processus d'installation Android.
 - Aucune publicité, aucun compte, aucune collecte de la liste des applications.
 
 ### Limites connues
@@ -23,18 +24,15 @@ Les mainteneurs d'extensions ne publient pas systématiquement des changelogs of
 
 ## Construire et signer
 
-Prérequis : JDK 17, Gradle 9.6.0, Android SDK 37 et Build Tools 36.0.0. AGP 9.4.0. Kotlin Compose Compiler 2.4.10.
+Prérequis : JDK 17, Android SDK 37 (ou 34+) et Build Tools 36.0.0. Gradle Wrapper 9.7.0 inclus.
 
 ```bash
-# Build de développement (signature debug différente et non pérenne)
-gradle :app:assembleDebug
+# Build de développement (signature debug)
+./gradlew :app:assembleDebug
 
-# Build signé (toujours la MÊME clé)
-export KEYSTORE_PATH=/chemin/vers/keiscope-signing.jks
-export KEYSTORE_PASSWORD='...'
-export KEY_ALIAS='keiscope'
-export KEY_PASSWORD='...'
-gradle :app:assembleRelease
+# Build signé (release officielle avec le keystore)
+source ~/.android/keiscope-signing.env   # ou exporter KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+./gradlew :app:assembleRelease
 ```
 
 **ATTENTION :** ne jamais utiliser la signature debug comme signature d'une version installée destinée à recevoir des mises à jour. Ne jamais publier le keystore, les mots de passe, ni leurs fichiers de sauvegarde dans le dépôt. Les mises à jour Android exigent le même `applicationId`, le même certificat et un `versionCode` supérieur. Conserver le keystore hors du dépôt pour toutes les futures versions.

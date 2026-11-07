@@ -12,21 +12,21 @@ android {
 
     defaultConfig {
         applicationId = "io.github.epikaigle.keiscope"
-        minSdk = 37
+        minSdk = 28
         targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
-        ndk { abiFilters.add("arm64-v8a") }
+        ndk { abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64")) }
     }
 
     signingConfigs {
         create("keiscopeRelease") {
-            val keystore = System.getenv("KEYSTORE_PATH")
+            val keystore = System.getenv("KEYSTORE_PATH") ?: System.getProperty("KEYSTORE_PATH")
             if (!keystore.isNullOrBlank()) {
                 storeFile = File(keystore)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: System.getProperty("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS") ?: System.getProperty("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD") ?: System.getProperty("KEY_PASSWORD")
             }
         }
     }
@@ -34,7 +34,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (!System.getenv("KEYSTORE_PATH").isNullOrBlank()) {
+            val keystore = System.getenv("KEYSTORE_PATH") ?: System.getProperty("KEYSTORE_PATH")
+            if (!keystore.isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("keiscopeRelease")
             }
         }
@@ -65,6 +66,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")

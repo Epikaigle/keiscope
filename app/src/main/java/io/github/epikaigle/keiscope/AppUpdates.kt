@@ -1,11 +1,12 @@
 package io.github.epikaigle.keiscope
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.content.Intent
-import androidx.core.net.toUri
+import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -38,23 +39,52 @@ object AppUpdates {
         val current = BuildConfig.VERSION_NAME
         if (!isNewer(tag, current)) return@withContext null
         val assets = release.optJSONArray("assets") ?: return@withContext null
+
+        var foundApkName: String? = null
+        var foundApkUrl: String? = null
+        var shaFromDigest: String? = null
+        var shaAssetUrl: String? = null
+
         for (i in 0 until assets.length()) {
             val asset = assets.optJSONObject(i) ?: continue
             val name = asset.optString("name")
             val url = asset.optString("browser_download_url")
-            if (!name.endsWith(".apk", ignoreCase = true)) continue
-            val uri = url.toUri()
-            if (uri.scheme != "https" || uri.host != "github.com") continue
-            val digest = asset.optString("digest", "")
-            val sha = digest.takeIf { it.matches(Regex("sha256:[0-9a-fA-F]{64}")) }?.substringAfter(':')
-            return@withContext AvailableUpdate(tag, name, url, sha, release.optString("html_url", RELEASES))
+            if (name.endsWith(".apk", ignoreCase = true)) {
+                val uri = url.toUri()
+                if (uri.scheme == "https" && uri.host == "github.com") {
+                    foundApkName = name
+                    foundApkUrl = url
+                    val digest = asset.optString("digest", "")
+                    if (digest.matches(Regex("sha256:[0-9a-fA-F]{64}"))) {
+                        shaFromDigest = digest.substringAfter(':')
+                    }
+                }
+            } else if (name.endsWith(".sha256", ignoreCase = true)) {
+                val uri = url.toUri()
+                if (uri.scheme == "https" && uri.host == "github.com") {
+                    shaAssetUrl = url
+                }
+            }
+        }
+
+        if (foundApkName != null && foundApkUrl != null) {
+            val resolvedSha = shaFromDigest ?: shaAssetUrl?.let { url ->
+                runCatching {
+                    Net.read(url).trim().split(Regex("\\s+")).firstOrNull()?.takeIf {
+                        it.matches(Regex("[0-9a-fA-F]{64}"))
+                    }
+                }.getOrNull()
+            }
+            return@withContext AvailableUpdate(tag, foundApkName, foundApkUrl, resolvedSha, release.optString("html_url", RELEASES))
         }
         null
     }
 
     internal fun isNewer(remote: String, current: String): Boolean {
-        val r = remote.removePrefix("v").split('.').map { it.toIntOrNull() ?: return false }
-        val c = current.removePrefix("v").split('.').map { it.toIntOrNull() ?: return false }
+        val cleanRemote = remote.removePrefix("v").substringBefore('-')
+        val cleanCurrent = current.removePrefix("v").substringBefore('-')
+        val r = cleanRemote.split('.').map { it.toIntOrNull() ?: return false }
+        val c = cleanCurrent.split('.').map { it.toIntOrNull() ?: return false }
         for (i in 0 until maxOf(r.size, c.size)) {
             val a = r.getOrElse(i) { 0 }
             val b = c.getOrElse(i) { 0 }
@@ -69,11 +99,31 @@ object AppUpdates {
         val apk = File(outputDir, "keiscope.apk")
         part.delete()
         try {
-            val connection = URL(update.apkUrl).openConnection() as HttpURLConnection
-            connection.connectTimeout = 20000
-            connection.readTimeout = 30000
-            connection.instanceFollowRedirects = true
-            connection.setRequestProperty("User-Agent", "KeiScope/1.0")
+            var currentUrl = update.apkUrl
+            var connection: HttpURLConnection
+            var redirectCount = 0
+            while (true) {
+                val parsed = URL(currentUrl)
+                require(parsed.protocol == "https") { "Téléchargement sécurisé HTTPS requis" }
+                connection = (parsed.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20000
+                    readTimeout = 30000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "KeiScope/1.0 (Android; github.com/Epikaigle/keiscope)")
+                }
+                val code = connection.responseCode
+                if (code in listOf(HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP, HttpURLConnection.HTTP_SEE_OTHER, 307, 308)) {
+                    val location = connection.getHeaderField("Location")
+                    connection.disconnect()
+                    if (location != null && redirectCount < 5) {
+                        currentUrl = location
+                        redirectCount++
+                        continue
+                    }
+                }
+                break
+            }
+
             try {
                 require(connection.responseCode in 200..299) { "Téléchargement impossible (HTTP ${connection.responseCode})" }
                 val total = connection.contentLengthLong
@@ -101,7 +151,7 @@ object AppUpdates {
                 withContext(Dispatchers.Main) { onProgress(100) }
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 if (update.sha256 != null && !actual.equals(update.sha256, true)) {
-                    throw IllegalStateException("L'empreinte SHA-256 de l'APK ne correspond pas")
+                    throw IllegalStateException("L'empreinte SHA-256 de l'APK ne correspond pas ($actual != ${update.sha256})")
                 }
                 check(part.length() > 32_000) { "Fichier APK trop petit" }
                 if (apk.exists()) apk.delete()
@@ -118,23 +168,61 @@ object AppUpdates {
 
     fun requestInstallation(context: Context, apk: File) {
         val packageManager = context.packageManager
-        // Prevent an unrelated APK from ever reaching the platform installer.
-        val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
-        val archive = packageManager.getPackageArchiveInfo(apk.absolutePath, flags)
+        val flags = PackageManager.GET_SIGNING_CERTIFICATES.toLong()
+        val archive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(apk.absolutePath, PackageManager.PackageInfoFlags.of(flags))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageArchiveInfo(apk.absolutePath, flags.toInt())
+        }
         require(archive?.packageName == context.packageName) { "L'APK ne correspond pas à KeiScope" }
-        val current = packageManager.getPackageInfo(context.packageName, flags)
-        require(archive.longVersionCode > current.longVersionCode) { "La version téléchargée n'est pas plus récente" }
-        val installedSignatures = current.signingInfo?.apkContentsSigners?.toSet().orEmpty()
-        val candidateSignatures = archive.signingInfo?.apkContentsSigners?.toSet().orEmpty()
+
+        val current = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(flags))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(context.packageName, flags.toInt())
+        }
+
+        val archiveVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            archive.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            archive.versionCode.toLong()
+        }
+        val currentVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            current.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            current.versionCode.toLong()
+        }
+        require(archiveVersionCode > currentVersionCode) { "La version téléchargée ($archiveVersionCode) n'est pas plus récente que l'actuelle ($currentVersionCode)" }
+
+        val installedSignatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            current.signingInfo?.apkContentsSigners?.toSet().orEmpty()
+        } else {
+            @Suppress("DEPRECATION")
+            current.signatures?.toSet().orEmpty()
+        }
+        val candidateSignatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            archive.signingInfo?.apkContentsSigners?.toSet().orEmpty()
+        } else {
+            @Suppress("DEPRECATION")
+            archive.signatures?.toSet().orEmpty()
+        }
         require(installedSignatures.isNotEmpty() && installedSignatures == candidateSignatures) {
             "Signature APK différente : mise à jour refusée"
         }
-        if (!packageManager.canRequestPackageInstalls()) {
-            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                "package:${context.packageName}".toUri())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            throw IllegalStateException("Autorisez l'installation pour KeiScope dans les paramètres, puis appuyez de nouveau sur Installer.")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!packageManager.canRequestPackageInstalls()) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    "package:${context.packageName}".toUri()
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                throw IllegalStateException("Autorisez l'installation pour KeiScope dans les paramètres, puis appuyez de nouveau sur Installer.")
+            }
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
         val intent = Intent(Intent.ACTION_VIEW).apply {

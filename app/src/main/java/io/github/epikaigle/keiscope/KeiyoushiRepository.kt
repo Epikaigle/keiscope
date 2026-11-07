@@ -2,6 +2,7 @@ package io.github.epikaigle.keiscope
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -25,10 +26,14 @@ data class ExtensionInfo(
     val code: Long,
     val version: String,
     val nsfw: Boolean,
+    val iconUrl: String? = null,
+    val apkUrl: String? = null,
+    val customSourcePath: String? = null,
 ) {
     /** Keiyoushi uses src/{language}/{package suffix} for ordinary extensions. */
     val sourcePath: String?
         get() {
+            if (!customSourcePath.isNullOrBlank()) return customSourcePath
             val prefix = "eu.kanade.tachiyomi.extension."
             if (!pkg.startsWith(prefix)) return null
             val suffix = pkg.removePrefix(prefix)
@@ -105,14 +110,24 @@ class KeiyoushiRepository(private val context: Context) {
     }
 
     /** Reads locally installed packages. Requires QUERY_ALL_PACKAGES on a sideloaded Android build. */
-    @Suppress("DEPRECATION")
     fun installedExtensions(): Map<String, InstalledInfo> {
         val pm = context.packageManager
-        val packages = pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
+        val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledPackages(0)
+        }
         return packages.mapNotNull { item ->
             val pkg = item.packageName
             if (!pkg.startsWith("eu.kanade.tachiyomi.extension.")) return@mapNotNull null
-            pkg to InstalledInfo(pkg, item.versionName ?: "?", item.longVersionCode)
+            val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                item.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                item.versionCode.toLong()
+            }
+            pkg to InstalledInfo(pkg, item.versionName ?: "?", code)
         }.toMap()
     }
 
@@ -129,7 +144,8 @@ class KeiyoushiRepository(private val context: Context) {
             diskFile.readText()
         } else {
             try {
-                val encodedPath = URLEncoder.encode(path, StandardCharsets.UTF_8.name())
+                // Encode each segment of the path, preserving '/'
+                val encodedPath = path.split('/').joinToString("/") { URLEncoder.encode(it, StandardCharsets.UTF_8.name()) }
                 val loaded = Net.read("https://api.github.com/repos/keiyoushi/extensions-source/commits?path=$encodedPath&per_page=30&page=$page")
                 require(JSONArray(loaded).length() <= 30) { "Historique GitHub invalide" }
                 diskFile.writeText(loaded)
@@ -195,7 +211,6 @@ class KeiyoushiRepository(private val context: Context) {
     }
 }
 
-
 /** Handles the current Keiyoushi repository index as well as older Tachiyomi-style indexes. */
 internal object CatalogParser {
     private const val PREFIX = "eu.kanade.tachiyomi.extension."
@@ -224,6 +239,14 @@ internal object CatalogParser {
             val code = codeValue?.toString()?.toLongOrNull() ?: -1L
             val explicitNsfw = item.optInt("nsfw", 0) != 0
             val warning = item.optString("contentWarning", "")
+
+            val resources = item.optJSONObject("resources")
+            val iconUrl = resources?.optString("iconUrl")?.takeIf { it.isNotBlank() }
+            val apkUrl = resources?.optString("apkUrl")?.takeIf { it.isNotBlank() }
+            val pathFromIcon = iconUrl?.let { url ->
+                Regex("""extensions-source@[^/]+/(src/[^/]+/[^/]+)/""").find(url)?.groupValues?.getOrNull(1)
+            }
+
             parsed += ExtensionInfo(
                 name = item.optString("name", pkg).removePrefix("Tachiyomi: "),
                 pkg = pkg,
@@ -231,6 +254,9 @@ internal object CatalogParser {
                 code = code,
                 version = version,
                 nsfw = explicitNsfw || warning.contains("NSFW", ignoreCase = true),
+                iconUrl = iconUrl,
+                apkUrl = apkUrl,
+                customSourcePath = pathFromIcon,
             )
         }
         return parsed.distinctBy { it.pkg }.sortedBy { it.name.lowercase() }

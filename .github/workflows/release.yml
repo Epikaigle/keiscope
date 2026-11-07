@@ -28,7 +28,7 @@ jobs:
         run: sdkmanager --install --channel=3 'platforms;android-37.0' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.6.0'
+          gradle-version: '9.7.0'
       - name: Check signing configuration
         env:
           KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -50,7 +50,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
       - name: Verify APK signature and prepare release
         shell: bash
         run: |

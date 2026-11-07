@@ -11,7 +11,11 @@ class CatalogParserTest {
               "extensionList":{"extensions":[
                 {"name":"MangaDex","packageName":"eu.kanade.tachiyomi.extension.all.mangadex",
                  "versionCode":"106005","versionName":"1.6.5","extensionLib":"1.6",
-                 "contentWarning":"CONTENT_WARNING_NONE","sources":[{"language":"en"}]},
+                 "contentWarning":"CONTENT_WARNING_NONE","sources":[{"language":"en"}],
+                 "resources":{
+                   "iconUrl":"https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/all/mangadex/res/mipmap-xhdpi/ic_launcher.png",
+                   "apkUrl":"https://github.com/keiyoushi/extensions/releases/download/xxx/tachiyomi-all.mangadex-v1.6.5.apk"
+                 }},
                 {"name":"AHottie","packageName":"eu.kanade.tachiyomi.extension.all.ahottie",
                  "versionCode":"106011","versionName":"1.6.11",
                  "contentWarning":"CONTENT_WARNING_NSFW"}
@@ -25,6 +29,8 @@ class CatalogParserTest {
         assertEquals(106005L, manga.code)
         assertEquals("1.6.5", manga.version)
         assertFalse(manga.nsfw)
+        assertEquals("https://cdn.jsdelivr.net/gh/keiyoushi/extensions-source@main/src/all/mangadex/res/mipmap-xhdpi/ic_launcher.png", manga.iconUrl)
+        assertEquals("src/all/mangadex", manga.sourcePath)
         assertTrue(results.first { it.name == "AHottie" }.nsfw)
     }
 
@@ -35,6 +41,7 @@ class CatalogParserTest {
         assertEquals(1, parsed.size)
         assertEquals("Foo", parsed.single().name)
         assertEquals(48L, parsed.single().code)
+        assertEquals("src/fr/foo", parsed.single().sourcePath)
     }
 
     @Test fun rejectsUnknownFormat() {
