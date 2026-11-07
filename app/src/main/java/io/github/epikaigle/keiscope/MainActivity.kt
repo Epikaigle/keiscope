@@ -205,7 +205,7 @@ private fun ExtensionCard(ext: ExtensionInfo, controller: KeiController) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (installed != null) {
                     Spacer(Modifier.height(4.dp))
-                    Text(if (newer) "MàJ disponible • v${installed.version}" else "Installée • v${installed.version}",
+                    Text(if (newer) "MàJ disponible" else if (ext.code < 0) "Installée • v${installed.version}" else "Installée",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (newer) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -239,6 +239,7 @@ private fun ExtensionDetails(controller: KeiController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val commits = controller.history
+    val displayVersion = if (ext.version == "?") controller.installed[ext.pkg]?.version ?: "?" else ext.version
     val groups = remember(commits) {
         commits.groupBy { it.versionAtCommit ?: "Version non identifiée" }
     }
@@ -249,10 +250,10 @@ private fun ExtensionDetails(controller: KeiController) {
                 Row(Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("v${ext.version}", style = MaterialTheme.typography.headlineSmall,
+                        Text("v$displayVersion", style = MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                        controller.installed[ext.pkg]?.let {
-                            Text("Installée : v${it.version}", style = MaterialTheme.typography.labelMedium,
+                        controller.installed[ext.pkg]?.takeIf { it.version != displayVersion }?.let {
+                            Text("Installée • v${it.version}", style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
