@@ -85,39 +85,23 @@ class KeiyoushiRepository(private val context: Context) {
     private val catalogCache = File(context.filesDir, "keiyoushi-index.json")
 
     suspend fun loadCatalog(force: Boolean = false): List<ExtensionInfo> = withContext(Dispatchers.IO) {
-        val catalogText = try {
-            if (!force && catalogCache.isFile && System.currentTimeMillis() - catalogCache.lastModified() < 6 * 3600_000L) {
-                catalogCache.readText()
-            } else {
-                val latest = Net.read("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json")
-                // Validate before replacing an existing working cache.
-                require(JSONArray(latest).length() > 50) { "Catalogue Keiyoushi vide ou incomplet" }
-                catalogCache.writeText(latest)
-                latest
-            }
-        } catch (e: Exception) {
-            if (catalogCache.isFile) catalogCache.readText() else throw e
-        }
-        parseCatalog(catalogText)
-    }
+        val cached = if (catalogCache.isFile) {
+            runCatching { CatalogParser.parse(catalogCache.readText()) }.getOrNull()?.takeIf { it.size > 50 }
+        } else null
+        val fresh = catalogCache.isFile &&
+            System.currentTimeMillis() - catalogCache.lastModified() in 0 until 6 * 3600_000L
+        if (!force && fresh && cached != null) return@withContext cached
 
-    private fun parseCatalog(input: String): List<ExtensionInfo> {
-        val array = JSONArray(input)
-        return buildList {
-            for (i in 0 until array.length()) {
-                val ext = array.optJSONObject(i) ?: continue
-                val pkg = ext.optString("pkg")
-                if (!pkg.startsWith("eu.kanade.tachiyomi.extension.")) continue
-                add(ExtensionInfo(
-                    name = ext.optString("name", pkg).removePrefix("Tachiyomi: "),
-                    pkg = pkg,
-                    lang = ext.optString("lang", "all"),
-                    code = ext.optLong("code", -1),
-                    version = ext.optString("version", "?"),
-                    nsfw = ext.optInt("nsfw") != 0,
-                ))
-            }
-        }.distinctBy { it.pkg }.sortedBy { it.name.lowercase() }
+        try {
+            val latest = Net.read("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json")
+            val parsed = CatalogParser.parse(latest)
+            require(parsed.size > 50) { "Catalogue Keiyoushi vide ou incomplet" }
+            // Replace the cache only after successfully parsing its actual format.
+            catalogCache.writeText(latest)
+            parsed
+        } catch (e: Exception) {
+            cached ?: throw e
+        }
     }
 
     /** Reads locally installed packages. Requires QUERY_ALL_PACKAGES on a sideloaded Android build. */
@@ -208,5 +192,47 @@ class KeiyoushiRepository(private val context: Context) {
         // Cache missing files, but never cache transient network/API failures as no history.
         if (!unavailable) versionKey.writeText("")
         return null
+    }
+}
+
+
+/** Handles the current Keiyoushi repository index as well as older Tachiyomi-style indexes. */
+internal object CatalogParser {
+    private const val PREFIX = "eu.kanade.tachiyomi.extension."
+
+    fun parse(input: String): List<ExtensionInfo> {
+        val root = org.json.JSONTokener(input).nextValue()
+        val entries = when (root) {
+            is JSONArray -> root
+            is JSONObject -> root.optJSONObject("extensionList")?.optJSONArray("extensions")
+                ?: root.optJSONArray("extensions")
+                ?: throw IllegalArgumentException("Format de catalogue Keiyoushi inconnu")
+            else -> throw IllegalArgumentException("Catalogue Keiyoushi invalide")
+        }
+        val parsed = ArrayList<ExtensionInfo>(entries.length())
+        for (i in 0 until entries.length()) {
+            val item = entries.optJSONObject(i) ?: continue
+            val pkg = item.optString("packageName").ifBlank { item.optString("pkg") }
+            if (!pkg.startsWith(PREFIX)) continue
+            val locale = item.optString("lang").ifBlank {
+                pkg.removePrefix(PREFIX).substringBefore('.', "all")
+            }
+            val version = item.optString("versionName").ifBlank {
+                item.optString("version", "?")
+            }
+            val codeValue = item.opt("versionCode") ?: item.opt("code")
+            val code = codeValue?.toString()?.toLongOrNull() ?: -1L
+            val explicitNsfw = item.optInt("nsfw", 0) != 0
+            val warning = item.optString("contentWarning", "")
+            parsed += ExtensionInfo(
+                name = item.optString("name", pkg).removePrefix("Tachiyomi: "),
+                pkg = pkg,
+                lang = locale,
+                code = code,
+                version = version,
+                nsfw = explicitNsfw || warning.contains("NSFW", ignoreCase = true),
+            )
+        }
+        return parsed.distinctBy { it.pkg }.sortedBy { it.name.lowercase() }
     }
 }
