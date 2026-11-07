@@ -3,7 +3,7 @@ package io.github.epikaigle.keiscope
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +43,7 @@ object AppUpdates {
             val name = asset.optString("name")
             val url = asset.optString("browser_download_url")
             if (!name.endsWith(".apk", ignoreCase = true)) continue
-            val uri = Uri.parse(url)
+            val uri = url.toUri()
             if (uri.scheme != "https" || uri.host != "github.com") continue
             val digest = asset.optString("digest", "")
             val sha = digest.takeIf { it.matches(Regex("sha256:[0-9a-fA-F]{64}")) }?.substringAfter(':')
@@ -131,7 +131,7 @@ object AppUpdates {
         }
         if (!packageManager.canRequestPackageInstalls()) {
             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"))
+                "package:${context.packageName}".toUri())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
             throw IllegalStateException("Autorisez l'installation pour KeiScope dans les paramètres, puis appuyez de nouveau sur Installer.")
