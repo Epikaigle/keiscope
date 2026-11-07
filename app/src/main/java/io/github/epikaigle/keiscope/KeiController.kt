@@ -3,6 +3,8 @@ package io.github.epikaigle.keiscope
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.core.content.edit
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,7 +51,7 @@ class KeiController(private val context: Context) {
         private set
     var downloadingUpdate by mutableStateOf(false)
         private set
-    var downloadProgress by mutableStateOf(0)
+    var downloadProgress by mutableIntStateOf(0)
         private set
     private var downloadedApk: java.io.File? = null
     private var downloadedTag: String? = null
@@ -87,7 +89,7 @@ class KeiController(private val context: Context) {
 
     fun toggleFollow(pkg: String) {
         followed = if (pkg in followed) followed - pkg else followed + pkg
-        preferences.edit().putStringSet("followed", followed.toSet()).apply()
+        preferences.edit { putStringSet("followed", followed.toSet()) }
     }
 
     fun showDetails(extension: ExtensionInfo) {
