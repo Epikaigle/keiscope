@@ -2,7 +2,7 @@ package io.github.epikaigle.keiscope
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun Context.openBrowser(url: String) {
-    val uri = Uri.parse(url)
+    val uri = url.toUri()
     if (uri.scheme != "https") return
     startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
