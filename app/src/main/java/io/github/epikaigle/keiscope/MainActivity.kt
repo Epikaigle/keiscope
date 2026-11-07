@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoStories
@@ -260,7 +260,7 @@ private fun ExtensionDetails(controller: KeiController) {
                     IconButton(onClick = {
                         ext.sourcePath?.let { context.openBrowser("https://github.com/keiyoushi/extensions-source/tree/main/$it") }
                     }, enabled = ext.sourcePath != null) {
-                        Icon(Icons.Default.OpenInNew, contentDescription = "Code source")
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Code source")
                     }
                 }
             }
@@ -311,7 +311,7 @@ private fun VersionGroup(version: String, changes: List<CommitInfo>) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.width(8.dp))
-                            Icon(Icons.Default.OpenInNew, "Ouvrir sur GitHub",
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, "Ouvrir sur GitHub",
                                 Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -382,7 +382,7 @@ private fun SettingsScreen(controller: KeiController) {
         }
         item {
             TextButton(onClick = { context.openBrowser("https://github.com/Epikaigle/keiscope") }) {
-                Icon(Icons.Default.OpenInNew, null, Modifier.size(17.dp))
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("GitHub")
             }
