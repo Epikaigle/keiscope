@@ -10,8 +10,7 @@
     <application
         android:label="KeiScope"
         android:icon="@drawable/ic_keiscope"
-        android:allowBackup="true"
-        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
