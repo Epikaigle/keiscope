@@ -81,8 +81,8 @@ private fun KeiScopeApp(controller: KeiController) {
     BackHandler(enabled = controller.selected != null) { controller.closeDetails() }
 
     LaunchedEffect(Unit) {
-        controller.refreshCatalog()
-        controller.checkUpdate(silent = true)
+        launch { controller.refreshCatalog() }
+        launch { controller.checkUpdate(silent = true) }
     }
 
     MaterialTheme(colorScheme = colors) {
@@ -118,7 +118,7 @@ private fun KeiScopeApp(controller: KeiController) {
         ) { insets ->
             Column(Modifier.fillMaxSize().padding(insets)) {
                 if (controller.loadingCatalog) LinearProgressIndicator(Modifier.fillMaxWidth())
-                controller.catalogError?.let { message ->
+                if (controller.selected == null && tab != 2) controller.catalogError?.let { message ->
                     ErrorBanner(message, { scope.launch { controller.refreshCatalog(force = true) } })
                 }
                 if (controller.selected != null) {
@@ -225,8 +225,11 @@ private fun EmptyState(title: String, text: String) {
         Icon(Icons.Default.Info, null, modifier = Modifier.size(34.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
         Text(title, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (text.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -257,10 +260,12 @@ private fun ExtensionDetails(controller: KeiController) {
                         Icon(if (ext.pkg in controller.followed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Favori")
                     }
-                    IconButton(onClick = {
-                        ext.sourcePath?.let { context.openBrowser("https://github.com/keiyoushi/extensions-source/tree/main/$it") }
-                    }, enabled = ext.sourcePath != null) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Code source")
+                    ext.sourcePath?.let { path ->
+                        IconButton(onClick = {
+                            context.openBrowser("https://github.com/keiyoushi/extensions-source/tree/main/$path")
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Code source")
+                        }
                     }
                 }
             }
@@ -275,7 +280,7 @@ private fun ExtensionDetails(controller: KeiController) {
             EmptyState("Aucun historique", "")
         }
         groups.forEach { (version, changes) ->
-            item(key = "group-$version") { VersionGroup(version, changes) }
+            item(key = "group-${ext.pkg}-$version") { VersionGroup(version, changes) }
         }
         if (controller.historyHasMore && !controller.loadingHistory) item {
             OutlinedButton(onClick = { scope.launch { controller.loadMoreHistory(ext) } },
