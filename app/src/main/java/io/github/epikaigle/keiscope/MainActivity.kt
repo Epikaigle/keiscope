@@ -88,11 +88,8 @@ private fun KeiScopeApp(controller: KeiController) {
             topBar = {
                 TopAppBar(
                     title = {
-                        Column {
-                            Text(if (controller.selected != null) controller.selected?.name ?: "Extension" else "KeiScope")
-                            if (controller.selected == null) Text("Keiyoushi • Mihon", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text(controller.selected?.name ?: "KeiScope",
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
                     navigationIcon = {
                         if (controller.selected != null) IconButton(onClick = { controller.closeDetails() }) {
@@ -109,7 +106,7 @@ private fun KeiScopeApp(controller: KeiController) {
             bottomBar = {
                 if (controller.selected == null) NavigationBar {
                     NavigationBarItem(selected = tab == 0, onClick = { tab = 0 },
-                        icon = { Icon(Icons.Default.Apps, contentDescription = null) }, label = { Text("Mes extensions") })
+                        icon = { Icon(Icons.Default.Apps, contentDescription = null) }, label = { Text("Installées") })
                     NavigationBarItem(selected = tab == 1, onClick = { tab = 1 },
                         icon = { Icon(Icons.Default.Search, contentDescription = null) }, label = { Text("Catalogue") })
                     NavigationBarItem(selected = tab == 2, onClick = { tab = 2 },
@@ -153,21 +150,14 @@ private fun MyExtensions(controller: KeiController) {
     LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text("Sur votre Pixel", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Text("${controller.installed.size} extension(s) détectée(s) • ${controller.followed.size} sélectionnée(s)",
+            Text("${controller.installed.size} installées • ${controller.followed.size} favoris",
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(12.dp))
         }
         if (mine.isEmpty()) item {
-            EmptyState("Aucune extension sélectionnée", "Les extensions installées seront détectées automatiquement. Vous pouvez aussi en ajouter depuis le catalogue.")
+            EmptyState("Aucune extension", "Ajoute-en depuis le catalogue.")
         }
         items(mine, key = { it.pkg }) { extension -> ExtensionCard(extension, controller) }
-        item {
-            Spacer(Modifier.height(6.dp))
-            Text("Les applications Keiyoushi sont détectées sur l'appareil. KeiScope ne lit pas les données privées de Mihon.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 
@@ -182,15 +172,13 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(value = query, onValueChange = onQuery,
             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            singleLine = true, label = { Text("Rechercher une extension") },
+            singleLine = true, placeholder = { Text("Rechercher") },
             leadingIcon = { Icon(Icons.Default.Search, null) })
-        Text("${results.size} résultat(s)", modifier = Modifier.padding(16.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
         LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp)) {
             items(results, key = { it.pkg }) { extension -> ExtensionCard(extension, controller) }
             if (results.isEmpty() && !controller.loadingCatalog) item {
-                EmptyState("Aucun résultat", "Vérifiez votre recherche ou actualisez le catalogue.")
+                EmptyState("Aucun résultat", "")
             }
         }
     }
@@ -211,11 +199,11 @@ private fun ExtensionCard(ext: ExtensionInfo, controller: KeiController) {
             Column(Modifier.weight(1f)) {
                 Text(ext.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(3.dp))
-                Text("${ext.lang.uppercase()} • Dernière v${ext.version}",
+                Text("${ext.lang.uppercase()} • v${ext.version}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (installed != null) {
                     Spacer(Modifier.height(4.dp))
-                    Text(if (newer) "Mise à jour de l'extension disponible (v${installed.version})" else "Installée : v${installed.version}",
+                    Text(if (newer) "MàJ disponible • v${installed.version}" else "Installée • v${installed.version}",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (newer) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -253,53 +241,43 @@ private fun ExtensionDetails(controller: KeiController) {
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Text("Dernière version connue", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(5.dp))
-                    Text("v${ext.version}", style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    controller.installed[ext.pkg]?.let {
-                        Text("Installée : v${it.version}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(ext.pkg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp),
-                        horizontalAlignment = Alignment.Start) {
-                        OutlinedButton(onClick = {
-                            ext.sourcePath?.let { path -> context.openBrowser("https://github.com/keiyoushi/extensions-source/tree/main/$path") }
-                        }, enabled = ext.sourcePath != null) { Text("Code source") }
-                        TextButton(onClick = { controller.toggleFollow(ext.pkg) }) {
-                            Text(if (controller.followed.contains(ext.pkg)) "Ne plus suivre" else "Suivre")
+                Row(Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("v${ext.version}", style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                        controller.installed[ext.pkg]?.let {
+                            Text("Installée : v${it.version}", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                    }
+                    IconButton(onClick = { controller.toggleFollow(ext.pkg) }) {
+                        Icon(if (ext.pkg in controller.followed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Favori")
+                    }
+                    IconButton(onClick = {
+                        ext.sourcePath?.let { context.openBrowser("https://github.com/keiyoushi/extensions-source/tree/main/$it") }
+                    }, enabled = ext.sourcePath != null) {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Code source")
                     }
                 }
             }
         }
         item {
-            Text("Historique des versions", style = MaterialTheme.typography.titleLarge,
+            Text("Versions", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold)
-            Text("Versions retrouvées à partir de l'état du code Git à chaque commit. Il ne s'agit pas forcément du changelog officiel des APK publiés. Les changements des bibliothèques partagées peuvent manquer.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (controller.loadingHistory) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         controller.historyError?.let { error -> item { ErrorBanner(error) { scope.launch { controller.loadHistory(ext, reset = true) } } } }
         if (groups.isEmpty() && !controller.loadingHistory && controller.historyError == null) item {
-            EmptyState("Aucun historique retrouvé", "Le dépôt peut avoir été déplacé ou aucune modification n'est accessible.")
+            EmptyState("Aucun historique", "")
         }
         groups.forEach { (version, changes) ->
             item(key = "group-$version") { VersionGroup(version, changes) }
         }
         if (controller.historyHasMore && !controller.loadingHistory) item {
             OutlinedButton(onClick = { scope.launch { controller.loadMoreHistory(ext) } },
-                modifier = Modifier.fillMaxWidth()) { Text("Charger des modifications plus anciennes") }
-        }
-        item {
-            TextButton(onClick = { context.openBrowser("https://github.com/keiyoushi/extensions-source/commits/main/${ext.sourcePath ?: "src"}") }) {
-                Text("Voir l'historique complet sur GitHub")
-                Spacer(Modifier.width(5.dp))
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(16.dp))
-            }
+                modifier = Modifier.fillMaxWidth()) { Text("Plus anciennes") }
         }
     }
 }
