@@ -30,6 +30,12 @@ jobs:
           gradle-version: '9.6.0'
       - name: Unit tests, Android lint and debug APK
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Show Android lint findings
+        if: always()
+        run: |
+          if [ -f app/build/reports/lint-results-debug.txt ]; then
+            cat app/build/reports/lint-results-debug.txt
+          fi
       - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
