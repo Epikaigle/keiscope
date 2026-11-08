@@ -21,6 +21,7 @@ data class AvailableUpdate(
     val apkUrl: String,
     val sha256: String?,
     val releaseUrl: String,
+    val apiUrl: String? = null,
 )
 
 object AppUpdates {
@@ -42,6 +43,7 @@ object AppUpdates {
 
         var foundApkName: String? = null
         var foundApkUrl: String? = null
+        var foundApiUrl: String? = null
         var shaFromDigest: String? = null
         var shaAssetUrl: String? = null
 
@@ -49,11 +51,13 @@ object AppUpdates {
             val asset = assets.optJSONObject(i) ?: continue
             val name = asset.optString("name")
             val url = asset.optString("browser_download_url")
+            val apiUrl = asset.optString("url")
             if (name.endsWith(".apk", ignoreCase = true)) {
                 val uri = url.toUri()
                 if (uri.scheme == "https" && uri.host == "github.com") {
                     foundApkName = name
                     foundApkUrl = url
+                    foundApiUrl = apiUrl.takeIf { it.isNotBlank() }
                     val digest = asset.optString("digest", "")
                     if (digest.matches(Regex("sha256:[0-9a-fA-F]{64}"))) {
                         shaFromDigest = digest.substringAfter(':')
@@ -75,7 +79,7 @@ object AppUpdates {
                     }
                 }.getOrNull()
             }
-            return@withContext AvailableUpdate(tag, foundApkName, foundApkUrl, resolvedSha, release.optString("html_url", RELEASES))
+            return@withContext AvailableUpdate(tag, foundApkName, foundApkUrl, resolvedSha, release.optString("html_url", RELEASES), foundApiUrl)
         }
         null
     }
@@ -98,72 +102,83 @@ object AppUpdates {
         val part = File(outputDir, "keiscope.apk.part")
         val apk = File(outputDir, "keiscope.apk")
         part.delete()
-        try {
-            var currentUrl = update.apkUrl
-            var connection: HttpURLConnection
-            var redirectCount = 0
-            while (true) {
-                val parsed = URL(currentUrl)
-                require(parsed.protocol == "https") { "Téléchargement sécurisé HTTPS requis" }
-                connection = (parsed.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20000
-                    readTimeout = 30000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "KeiScope/1.0 (Android; github.com/Epikaigle/keiscope)")
-                }
-                val code = connection.responseCode
-                if (code in listOf(HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP, HttpURLConnection.HTTP_SEE_OTHER, 307, 308)) {
-                    val location = connection.getHeaderField("Location")
-                    connection.disconnect()
-                    if (location != null && redirectCount < 5) {
-                        currentUrl = location
-                        redirectCount++
-                        continue
-                    }
-                }
-                break
-            }
 
+        val candidates = listOfNotNull(update.apiUrl, update.apkUrl).distinct()
+        var lastError: Exception? = null
+
+        for (initialUrl in candidates) {
             try {
-                require(connection.responseCode in 200..299) { "Téléchargement impossible (HTTP ${connection.responseCode})" }
-                val total = connection.contentLengthLong
-                val digest = MessageDigest.getInstance("SHA-256")
-                connection.inputStream.use { input ->
-                    part.outputStream().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var count: Int
-                        var received = 0L
-                        var lastProgress = -1
-                        while (input.read(buffer).also { count = it } != -1) {
-                            output.write(buffer, 0, count)
-                            digest.update(buffer, 0, count)
-                            received += count
-                            if (total > 0) {
-                                val percent = (received * 100 / total).toInt().coerceIn(0, 100)
-                                if (percent != lastProgress) {
-                                    lastProgress = percent
-                                    withContext(Dispatchers.Main) { onProgress(percent) }
+                var currentUrl = initialUrl
+                var connection: HttpURLConnection
+                var redirectCount = 0
+                while (true) {
+                    val parsed = URL(currentUrl)
+                    require(parsed.protocol == "https") { "Téléchargement sécurisé HTTPS requis" }
+                    connection = (parsed.openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 25000
+                        readTimeout = 35000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "KeiScope/1.0 (Android; github.com/Epikaigle/keiscope)")
+                        if (parsed.host == "api.github.com") {
+                            setRequestProperty("Accept", "application/octet-stream")
+                        }
+                    }
+                    val code = connection.responseCode
+                    if (code in listOf(HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP, HttpURLConnection.HTTP_SEE_OTHER, 307, 308)) {
+                        val location = connection.getHeaderField("Location")
+                        connection.disconnect()
+                        if (location != null && redirectCount < 5) {
+                            currentUrl = location
+                            redirectCount++
+                            continue
+                        }
+                    }
+                    break
+                }
+
+                try {
+                    require(connection.responseCode in 200..299) { "Téléchargement impossible (HTTP ${connection.responseCode})" }
+                    val total = connection.contentLengthLong
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    part.delete()
+                    connection.inputStream.use { input ->
+                        part.outputStream().use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var count: Int
+                            var received = 0L
+                            var lastProgress = -1
+                            while (input.read(buffer).also { count = it } != -1) {
+                                output.write(buffer, 0, count)
+                                digest.update(buffer, 0, count)
+                                received += count
+                                if (total > 0) {
+                                    val percent = (received * 100 / total).toInt().coerceIn(0, 100)
+                                    if (percent != lastProgress) {
+                                        lastProgress = percent
+                                        withContext(Dispatchers.Main) { onProgress(percent) }
+                                    }
                                 }
                             }
                         }
                     }
+                    withContext(Dispatchers.Main) { onProgress(100) }
+                    val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                    if (update.sha256 != null && !actual.equals(update.sha256, true)) {
+                        throw IllegalStateException("L'empreinte SHA-256 de l'APK ne correspond pas ($actual != ${update.sha256})")
+                    }
+                    check(part.length() > 32_000) { "Fichier APK trop petit" }
+                    if (apk.exists()) apk.delete()
+                    check(part.renameTo(apk)) { "Impossible de sauvegarder l'APK" }
+                    return@withContext apk
+                } finally {
+                    connection.disconnect()
                 }
-                withContext(Dispatchers.Main) { onProgress(100) }
-                val actual = digest.digest().joinToString("") { "%02x".format(it) }
-                if (update.sha256 != null && !actual.equals(update.sha256, true)) {
-                    throw IllegalStateException("L'empreinte SHA-256 de l'APK ne correspond pas ($actual != ${update.sha256})")
-                }
-                check(part.length() > 32_000) { "Fichier APK trop petit" }
-                if (apk.exists()) apk.delete()
-                check(part.renameTo(apk)) { "Impossible de sauvegarder l'APK" }
-                apk
-            } finally {
-                connection.disconnect()
+            } catch (e: Exception) {
+                lastError = e
+                part.delete()
             }
-        } catch (e: Exception) {
-            part.delete()
-            throw e
         }
+        throw lastError ?: IllegalStateException("Échec du téléchargement")
     }
 
     fun requestInstallation(context: Context, apk: File) {
