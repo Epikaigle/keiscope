@@ -105,6 +105,22 @@ class KeiController(private val context: Context) : ViewModel() {
 
     fun scanInstalled() {
         installed = try { repo.installedExtensions() } catch (_: Exception) { emptyMap() }
+        prefetchInstalledDates()
+    }
+
+    private fun prefetchInstalledDates() {
+        scope.launch(Dispatchers.IO) {
+            val installedPkgs = installed.keys.toSet()
+            val mine = catalog.filter { it.pkg in installedPkgs }
+            for (ext in mine) {
+                if (repo.getCachedCommitDate(ext.pkg) == null && ext.sourcePath != null) {
+                    runCatching {
+                        repo.loadHistory(ext, page = 1)
+                    }
+                    kotlinx.coroutines.delay(100)
+                }
+            }
+        }
     }
 
     fun toggleGridView() {
@@ -131,6 +147,10 @@ class KeiController(private val context: Context) : ViewModel() {
         return repo.getCachedCommitDate(pkg)
     }
 
+    fun getEffectiveDate(ext: ExtensionInfo): String? {
+        return repo.getCachedCommitDate(ext.pkg) ?: ext.releaseDate
+    }
+
     fun sortList(list: List<ExtensionInfo>): List<ExtensionInfo> {
         return when (sortOption) {
             SortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
@@ -143,7 +163,7 @@ class KeiController(private val context: Context) : ViewModel() {
             )
             SortOption.DATE_DESC -> list.sortedWith(
                 compareByDescending<ExtensionInfo> { ext ->
-                    repo.getCachedCommitDate(ext.pkg) ?: ""
+                    getEffectiveDate(ext) ?: ""
                 }.thenByDescending { it.code }.thenBy { it.name.lowercase() }
             )
             SortOption.VERSION_CODE -> list.sortedWith(

@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.epikaigle.keiscope"
         minSdk = 28
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
         ndk { abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64")) }
     }
 

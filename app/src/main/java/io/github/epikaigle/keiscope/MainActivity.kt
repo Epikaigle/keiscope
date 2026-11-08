@@ -587,7 +587,7 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
 private fun ExtensionListCard(ext: ExtensionInfo, controller: KeiController) {
     val installed = controller.installed[ext.pkg]
     val newer = installed != null && ext.code > installed.code && ext.code >= 0
-    val commitDate = controller.getCachedCommitDate(ext.pkg)
+    val commitDate = controller.getEffectiveDate(ext)
 
     ElevatedCard(
         modifier = Modifier

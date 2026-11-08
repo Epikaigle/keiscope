@@ -29,6 +29,7 @@ data class ExtensionInfo(
     val iconUrl: String? = null,
     val apkUrl: String? = null,
     val customSourcePath: String? = null,
+    val releaseDate: String? = null,
 ) {
     /** Keiyoushi uses src/{language}/{package suffix} for ordinary extensions. */
     val sourcePath: String?
@@ -88,10 +89,46 @@ object Net {
 
 class KeiyoushiRepository(private val context: Context) {
     private val catalogCache = File(context.filesDir, "keiyoushi-index.json")
+    private val releaseDatesCache = File(context.filesDir, "keiyoushi-release-dates.json")
+
+    private suspend fun loadReleaseDates(): Map<String, String> = withContext(Dispatchers.IO) {
+        if (releaseDatesCache.isFile && System.currentTimeMillis() - releaseDatesCache.lastModified() in 0 until 6 * 3600_000L) {
+            val cached = runCatching {
+                val obj = JSONObject(releaseDatesCache.readText())
+                val map = mutableMapOf<String, String>()
+                obj.keys().forEach { k -> map[k] = obj.getString(k) }
+                map
+            }.getOrNull()
+            if (!cached.isNullOrEmpty()) return@withContext cached
+        }
+
+        try {
+            val json = Net.read("https://api.github.com/repos/keiyoushi/extensions/releases?per_page=30")
+            val array = JSONArray(json)
+            val map = mutableMapOf<String, String>()
+            val obj = JSONObject()
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val tag = item.optString("tag_name")
+                val published = item.optString("published_at")
+                if (tag.isNotBlank() && published.isNotBlank()) {
+                    map[tag] = published
+                    obj.put(tag, published)
+                }
+            }
+            if (map.isNotEmpty()) {
+                releaseDatesCache.writeText(obj.toString())
+            }
+            map
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
 
     suspend fun loadCatalog(force: Boolean = false): List<ExtensionInfo> = withContext(Dispatchers.IO) {
+        val tagDates = loadReleaseDates()
         val cached = if (catalogCache.isFile) {
-            runCatching { CatalogParser.parse(catalogCache.readText()) }.getOrNull()?.takeIf { it.size > 50 }
+            runCatching { CatalogParser.parse(catalogCache.readText(), tagDates) }.getOrNull()?.takeIf { it.size > 50 }
         } else null
         val fresh = catalogCache.isFile &&
             System.currentTimeMillis() - catalogCache.lastModified() in 0 until 6 * 3600_000L
@@ -99,7 +136,7 @@ class KeiyoushiRepository(private val context: Context) {
 
         try {
             val latest = Net.read("https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json")
-            val parsed = CatalogParser.parse(latest)
+            val parsed = CatalogParser.parse(latest, tagDates)
             require(parsed.size > 50) { "Catalogue Keiyoushi vide ou incomplet" }
             // Replace the cache only after successfully parsing its actual format.
             catalogCache.writeText(latest)
@@ -238,7 +275,7 @@ class KeiyoushiRepository(private val context: Context) {
 internal object CatalogParser {
     private const val PREFIX = "eu.kanade.tachiyomi.extension."
 
-    fun parse(input: String): List<ExtensionInfo> {
+    fun parse(input: String, tagDates: Map<String, String> = emptyMap()): List<ExtensionInfo> {
         val root = org.json.JSONTokener(input).nextValue()
         val entries = when (root) {
             is JSONArray -> root
@@ -269,6 +306,10 @@ internal object CatalogParser {
             val pathFromIcon = iconUrl?.let { url ->
                 Regex("""extensions-source@[^/]+/(src/[^/]+/[^/]+)/""").find(url)?.groupValues?.getOrNull(1)
             }
+            val tag = apkUrl?.let { url ->
+                Regex("""/releases/download/([^/]+)/""").find(url)?.groupValues?.getOrNull(1)
+            }
+            val releaseDate = tag?.let { tagDates[it] }?.take(10)
 
             parsed += ExtensionInfo(
                 name = item.optString("name", pkg).removePrefix("Tachiyomi: "),
@@ -280,6 +321,7 @@ internal object CatalogParser {
                 iconUrl = iconUrl,
                 apkUrl = apkUrl,
                 customSourcePath = pathFromIcon,
+                releaseDate = releaseDate,
             )
         }
         return parsed.distinctBy { it.pkg }.sortedBy { it.name.lowercase() }
