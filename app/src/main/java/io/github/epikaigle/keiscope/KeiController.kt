@@ -14,6 +14,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+enum class SortOption(val label: String) {
+    NAME_ASC("Nom (A-Z)"),
+    NAME_DESC("Nom (Z-A)"),
+    UPDATES_FIRST("MàJ en premier"),
+    DATE_DESC("Date (dernière MàJ)"),
+    VERSION_CODE("Version récente")
+}
+
 /** Small state-holder deliberately kept independent from Mihon internals. */
 class KeiController(private val context: Context) : ViewModel() {
     private val repo = KeiyoushiRepository(context)
@@ -26,6 +34,17 @@ class KeiController(private val context: Context) : ViewModel() {
         private set
     var isGridView by mutableStateOf(preferences.getBoolean("is_grid_view", false))
         private set
+    var selectedLang by mutableStateOf<String?>(preferences.getString("selected_lang", null))
+        private set
+    var hideNsfw by mutableStateOf(preferences.getBoolean("hide_nsfw", false))
+        private set
+    var sortOption by mutableStateOf(
+        runCatching {
+            SortOption.valueOf(preferences.getString("sort_option", SortOption.NAME_ASC.name) ?: SortOption.NAME_ASC.name)
+        }.getOrDefault(SortOption.NAME_ASC)
+    )
+        private set
+
     var loadingCatalog by mutableStateOf(false)
         private set
     var catalogError by mutableStateOf<String?>(null)
@@ -73,7 +92,15 @@ class KeiController(private val context: Context) : ViewModel() {
                     nsfw = false,
                 )
             }
-            return (fromCatalog + unknown).sortedBy { it.name.lowercase() }
+            return sortList(fromCatalog + unknown)
+        }
+
+    val availableLanguages: List<String>
+        get() {
+            val langs = catalog.map { it.lang.lowercase() }.distinct().sorted()
+            val priority = listOf("fr", "en", "all")
+            val rest = langs.filter { it !in priority }
+            return priority.filter { it in langs } + rest
         }
 
     fun scanInstalled() {
@@ -83,6 +110,46 @@ class KeiController(private val context: Context) : ViewModel() {
     fun toggleGridView() {
         isGridView = !isGridView
         preferences.edit { putBoolean("is_grid_view", isGridView) }
+    }
+
+    fun setLanguageFilter(lang: String?) {
+        selectedLang = lang
+        preferences.edit { putString("selected_lang", lang) }
+    }
+
+    fun toggleHideNsfw() {
+        hideNsfw = !hideNsfw
+        preferences.edit { putBoolean("hide_nsfw", hideNsfw) }
+    }
+
+    fun setSort(option: SortOption) {
+        sortOption = option
+        preferences.edit { putString("sort_option", option.name) }
+    }
+
+    fun getCachedCommitDate(pkg: String): String? {
+        return repo.getCachedCommitDate(pkg)
+    }
+
+    fun sortList(list: List<ExtensionInfo>): List<ExtensionInfo> {
+        return when (sortOption) {
+            SortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
+            SortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
+            SortOption.UPDATES_FIRST -> list.sortedWith(
+                compareByDescending<ExtensionInfo> { ext ->
+                    val inst = installed[ext.pkg]
+                    inst != null && ext.code > inst.code && ext.code >= 0
+                }.thenBy { it.name.lowercase() }
+            )
+            SortOption.DATE_DESC -> list.sortedWith(
+                compareByDescending<ExtensionInfo> { ext ->
+                    repo.getCachedCommitDate(ext.pkg) ?: ""
+                }.thenByDescending { it.code }.thenBy { it.name.lowercase() }
+            )
+            SortOption.VERSION_CODE -> list.sortedWith(
+                compareByDescending<ExtensionInfo> { it.code }.thenBy { it.name.lowercase() }
+            )
+        }
     }
 
     suspend fun refreshCatalog(force: Boolean = false) {

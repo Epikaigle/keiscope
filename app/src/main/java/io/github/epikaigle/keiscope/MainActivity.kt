@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -21,19 +22,25 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -183,6 +191,34 @@ private fun KeiScopeApp(controller: KeiController) {
                                             contentDescription = if (controller.isGridView) "Afficher en liste" else "Afficher en grille"
                                         )
                                     }
+                                    var topSortMenuExpanded by remember { mutableStateOf(false) }
+                                    Box {
+                                        IconButton(onClick = { topSortMenuExpanded = true }) {
+                                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Trier")
+                                        }
+                                        DropdownMenu(
+                                            expanded = topSortMenuExpanded,
+                                            onDismissRequest = { topSortMenuExpanded = false }
+                                        ) {
+                                            SortOption.entries.forEach { option ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Text(option.label)
+                                                            if (controller.sortOption == option) {
+                                                                Spacer(Modifier.width(8.dp))
+                                                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                            }
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        controller.setSort(option)
+                                                        topSortMenuExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
                                     if (!isWideScreen) {
                                         IconButton(onClick = { scope.launch { controller.refreshCatalog(force = true) } }) {
                                             Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
@@ -315,18 +351,63 @@ private fun MyExtensions(controller: KeiController) {
     val isGrid = controller.isGridView
 
     LazyVerticalGrid(
-        columns = if (isGrid) GridCells.Adaptive(minSize = 150.dp) else GridCells.Adaptive(minSize = 340.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        columns = if (isGrid) GridCells.Adaptive(minSize = 100.dp) else GridCells.Adaptive(minSize = 340.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text(
-                "${controller.installed.size} extension${if (controller.installed.size > 1) "s" else ""} installée${if (controller.installed.size > 1) "s" else ""}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "${controller.installed.size} extension${if (controller.installed.size > 1) "s" else ""} installée${if (controller.installed.size > 1) "s" else ""}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                var mySortMenuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    TextButton(
+                        onClick = { mySortMenuExpanded = true },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Sort,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(controller.sortOption.label, style = MaterialTheme.typography.labelSmall)
+                    }
+                    DropdownMenu(
+                        expanded = mySortMenuExpanded,
+                        onDismissRequest = { mySortMenuExpanded = false }
+                    ) {
+                        SortOption.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(option.label)
+                                        if (controller.sortOption == option) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    controller.setSort(option)
+                                    mySortMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
         if (mine.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -345,13 +426,18 @@ private fun MyExtensions(controller: KeiController) {
 
 @Composable
 private fun CatalogScreen(controller: KeiController, query: String, onQuery: (String) -> Unit) {
-    val results = remember(query, controller.catalog) {
+    val results = remember(query, controller.catalog, controller.selectedLang, controller.hideNsfw, controller.sortOption) {
         val q = query.trim()
-        if (q.isEmpty()) controller.catalog else controller.catalog.filter {
-            it.name.contains(q, ignoreCase = true) ||
-            it.pkg.contains(q, ignoreCase = true) ||
-            it.lang.contains(q, ignoreCase = true)
+        val filtered = controller.catalog.filter { ext ->
+            val matchesQuery = q.isEmpty() ||
+                ext.name.contains(q, ignoreCase = true) ||
+                ext.pkg.contains(q, ignoreCase = true) ||
+                ext.lang.contains(q, ignoreCase = true)
+            val matchesLang = controller.selectedLang == null || ext.lang.equals(controller.selectedLang, ignoreCase = true)
+            val matchesNsfw = !controller.hideNsfw || !ext.nsfw
+            matchesQuery && matchesLang && matchesNsfw
         }
+        controller.sortList(filtered)
     }
     val isGrid = controller.isGridView
 
@@ -365,7 +451,7 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
             onValueChange = onQuery,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             singleLine = true,
             placeholder = { Text("Rechercher une extension, une langue ou un paquet") },
             leadingIcon = { Icon(Icons.Default.Search, null) },
@@ -378,11 +464,101 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
             },
             shape = RoundedCornerShape(12.dp)
         )
+
+        // Filter Bar: Sort, 18+ toggle, and Language filters
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item {
+                var sortMenuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    FilterChip(
+                        selected = controller.sortOption != SortOption.NAME_ASC,
+                        onClick = { sortMenuExpanded = true },
+                        label = { Text(controller.sortOption.label, style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = "Trier",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                    DropdownMenu(
+                        expanded = sortMenuExpanded,
+                        onDismissRequest = { sortMenuExpanded = false }
+                    ) {
+                        SortOption.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(option.label)
+                                        if (controller.sortOption == option) {
+                                            Spacer(Modifier.width(8.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    controller.setSort(option)
+                                    sortMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                FilterChip(
+                    selected = controller.hideNsfw,
+                    onClick = { controller.toggleHideNsfw() },
+                    label = { Text("Sans 18+", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = {
+                        Icon(
+                            if (controller.hideNsfw) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
+                        selectedLeadingIconColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                )
+            }
+            item {
+                FilterChip(
+                    selected = controller.selectedLang == null,
+                    onClick = { controller.setLanguageFilter(null) },
+                    label = { Text("Toutes", style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+            items(controller.availableLanguages, key = { it }) { lang ->
+                FilterChip(
+                    selected = controller.selectedLang.equals(lang, ignoreCase = true),
+                    onClick = {
+                        if (controller.selectedLang.equals(lang, ignoreCase = true)) {
+                            controller.setLanguageFilter(null)
+                        } else {
+                            controller.setLanguageFilter(lang)
+                        }
+                    },
+                    label = { Text(lang.uppercase(), style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
         LazyVerticalGrid(
-            columns = if (isGrid) GridCells.Adaptive(minSize = 150.dp) else GridCells.Adaptive(minSize = 340.dp),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            columns = if (isGrid) GridCells.Adaptive(minSize = 100.dp) else GridCells.Adaptive(minSize = 340.dp),
+            contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             items(results, key = { it.pkg }) { extension ->
@@ -394,7 +570,12 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
             }
             if (results.isEmpty() && !controller.loadingCatalog) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyState("Aucun résultat", if (query.isNotBlank()) "Aucune extension trouvée pour « $query »" else "")
+                    EmptyState(
+                        "Aucun résultat",
+                        if (query.isNotBlank() || controller.selectedLang != null || controller.hideNsfw)
+                            "Aucune extension ne correspond aux filtres appliqués."
+                        else ""
+                    )
                 }
             }
         }
@@ -406,19 +587,21 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
 private fun ExtensionListCard(ext: ExtensionInfo, controller: KeiController) {
     val installed = controller.installed[ext.pkg]
     val newer = installed != null && ext.code > installed.code && ext.code >= 0
+    val commitDate = controller.getCachedCommitDate(ext.pkg)
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { controller.showDetails(ext) },
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ExtensionIcon(ext, size = 44.dp)
+            ExtensionIcon(ext, size = 46.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -438,7 +621,7 @@ private fun ExtensionListCard(ext: ExtensionInfo, controller: KeiController) {
                             Text(
                                 "18+",
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 fontWeight = FontWeight.Bold
                             )
@@ -451,24 +634,68 @@ private fun ExtensionListCard(ext: ExtensionInfo, controller: KeiController) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (installed != null && newer) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Actuelle : v${installed.version}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Right side: status badges, commit date / version code, and navigation arrow
+            Spacer(Modifier.width(8.dp))
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center
+            ) {
                 if (installed != null) {
-                    Spacer(Modifier.height(3.dp))
                     Surface(
                         color = if (newer) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(4.dp)
+                        shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = if (newer) "MàJ disponible (v${installed.version} → v${ext.version})"
-                                   else if (ext.code < 0) "Installée • v${installed.version}"
-                                   else "Installée",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (newer) FontWeight.SemiBold else FontWeight.Normal,
+                            text = if (newer) "MàJ dispo" else "Installée",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = if (newer) FontWeight.Bold else FontWeight.Medium,
                             color = if (newer) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
                     }
                 }
+                if (commitDate != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            text = commitDate,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (ext.code > 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "c.${ext.code}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.outlineVariant
+            )
         }
     }
 }
@@ -482,16 +709,16 @@ private fun ExtensionGridCard(ext: ExtensionInfo, controller: KeiController) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { controller.showDetails(ext) },
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 6.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(contentAlignment = Alignment.TopEnd) {
-                ExtensionIcon(ext, size = 52.dp)
+                ExtensionIcon(ext, size = 44.dp)
                 if (ext.nsfw) {
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -501,28 +728,33 @@ private fun ExtensionGridCard(ext: ExtensionInfo, controller: KeiController) {
                         Text(
                             "18+",
                             modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.dp),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(5.dp))
             Text(
-                ext.name,
-                style = MaterialTheme.typography.bodyMedium,
+                text = ext.name,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 30.dp)
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                "${ext.lang.uppercase()} • v${ext.version}",
-                style = MaterialTheme.typography.labelSmall,
+                text = "${ext.lang.uppercase()} • v${ext.version}",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (installed != null) {
                 Spacer(Modifier.height(4.dp))
@@ -531,11 +763,11 @@ private fun ExtensionGridCard(ext: ExtensionInfo, controller: KeiController) {
                     shape = RoundedCornerShape(4.dp)
                 ) {
                     Text(
-                        text = if (newer) "MàJ dispo" else "Installée",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (newer) FontWeight.SemiBold else FontWeight.Normal,
+                        text = if (newer) "MàJ" else "Installée",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        fontWeight = if (newer) FontWeight.Bold else FontWeight.Medium,
                         color = if (newer) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }

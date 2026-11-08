@@ -132,6 +132,23 @@ class KeiyoushiRepository(private val context: Context) {
     }
 
     private val historyDir = File(context.filesDir, "history").apply { mkdirs() }
+    private val commitDateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun getCachedCommitDate(pkg: String): String? {
+        commitDateCache[pkg]?.let { return it }
+        val diskKey = pkg.replace(Regex("[^a-zA-Z0-9._-]"), "_") + "-p1.json"
+        val file = File(historyDir, diskKey)
+        if (!file.isFile) return null
+        val date = runCatching {
+            val list = JSONArray(file.readText())
+            val first = list.optJSONObject(0)
+            first?.optJSONObject("commit")?.optJSONObject("author")?.optString("date")?.take(10)
+        }.getOrNull()
+        if (date != null) {
+            commitDateCache[pkg] = date
+        }
+        return date
+    }
 
     /** Git commits are mapped to the version declared by build.gradle.kts at each commit SHA.
      * This is a history of SOURCE revisions, not guaranteed to match the contents of published APKs.
@@ -177,6 +194,12 @@ class KeiyoushiRepository(private val context: Context) {
                     )
                 }
             }.awaitAll()
+        }
+        if (page == 1 && commits.isNotEmpty()) {
+            val firstDate = commits.first().date.take(10)
+            if (firstDate.isNotBlank()) {
+                commitDateCache[ext.pkg] = firstDate
+            }
         }
         HistoryPage(commits, list.length() == 30)
     }
