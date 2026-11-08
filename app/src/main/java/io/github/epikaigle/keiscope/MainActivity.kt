@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -21,16 +22,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -39,14 +38,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -138,6 +142,12 @@ private fun KeiScopeApp(controller: KeiController) {
                         )
                         Spacer(Modifier.weight(1f))
                         if (tab != 2) {
+                            IconButton(onClick = { controller.toggleGridView() }) {
+                                Icon(
+                                    if (controller.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                                    contentDescription = if (controller.isGridView) "Affichage liste" else "Affichage grille"
+                                )
+                            }
                             IconButton(onClick = { scope.launch { controller.refreshCatalog(force = true) } }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
                             }
@@ -165,9 +175,18 @@ private fun KeiScopeApp(controller: KeiController) {
                                 }
                             },
                             actions = {
-                                if (controller.selected == null && tab != 2 && !isWideScreen) {
-                                    IconButton(onClick = { scope.launch { controller.refreshCatalog(force = true) } }) {
-                                        Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
+                                if (controller.selected == null && tab != 2) {
+                                    // Toggle between Grid and List view
+                                    IconButton(onClick = { controller.toggleGridView() }) {
+                                        Icon(
+                                            if (controller.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                                            contentDescription = if (controller.isGridView) "Afficher en liste" else "Afficher en grille"
+                                        )
+                                    }
+                                    if (!isWideScreen) {
+                                        IconButton(onClick = { scope.launch { controller.refreshCatalog(force = true) } }) {
+                                            Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
+                                        }
                                     }
                                 }
                             }
@@ -229,6 +248,44 @@ private fun KeiScopeApp(controller: KeiController) {
 }
 
 @Composable
+private fun ExtensionIcon(
+    ext: ExtensionInfo,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp
+) {
+    val context = LocalContext.current
+    val localDrawable = remember(ext.pkg) {
+        runCatching { context.packageManager.getApplicationIcon(ext.pkg) }.getOrNull()
+    }
+    Surface(
+        modifier = modifier.size(size),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        val model = ext.iconUrl ?: localDrawable
+        if (model != null) {
+            AsyncImage(
+                model = model,
+                contentDescription = ext.name,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = ext.lang.uppercase().take(3),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ErrorBanner(message: String, retry: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.errorContainer) {
         Row(
@@ -255,8 +312,10 @@ private fun ErrorBanner(message: String, retry: () -> Unit) {
 @Composable
 private fun MyExtensions(controller: KeiController) {
     val mine = controller.myExtensions
+    val isGrid = controller.isGridView
+
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 340.dp),
+        columns = if (isGrid) GridCells.Adaptive(minSize = 150.dp) else GridCells.Adaptive(minSize = 340.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -264,18 +323,22 @@ private fun MyExtensions(controller: KeiController) {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
-                "${controller.installed.size} installées • ${controller.followed.size} favoris",
+                "${controller.installed.size} extension${if (controller.installed.size > 1) "s" else ""} installée${if (controller.installed.size > 1) "s" else ""}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         if (mine.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                EmptyState("Aucune extension", "Ajoutez des favoris depuis le catalogue ou installez des extensions.")
+                EmptyState("Aucune extension installée", "Installez des extensions depuis votre lecteur Mihon ou Tachiyomi pour les retrouver ici.")
             }
         }
         items(mine, key = { it.pkg }) { extension ->
-            ExtensionCard(extension, controller)
+            if (isGrid) {
+                ExtensionGridCard(extension, controller)
+            } else {
+                ExtensionListCard(extension, controller)
+            }
         }
     }
 }
@@ -290,6 +353,8 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
             it.lang.contains(q, ignoreCase = true)
         }
     }
+    val isGrid = controller.isGridView
+
     Column(
         Modifier
             .fillMaxSize()
@@ -314,14 +379,18 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
             shape = RoundedCornerShape(12.dp)
         )
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 340.dp),
+            columns = if (isGrid) GridCells.Adaptive(minSize = 150.dp) else GridCells.Adaptive(minSize = 340.dp),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             items(results, key = { it.pkg }) { extension ->
-                ExtensionCard(extension, controller)
+                if (isGrid) {
+                    ExtensionGridCard(extension, controller)
+                } else {
+                    ExtensionListCard(extension, controller)
+                }
             }
             if (results.isEmpty() && !controller.loadingCatalog) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -332,10 +401,10 @@ private fun CatalogScreen(controller: KeiController, query: String, onQuery: (St
     }
 }
 
+/** Card for List view (horizontal format with details) */
 @Composable
-private fun ExtensionCard(ext: ExtensionInfo, controller: KeiController) {
+private fun ExtensionListCard(ext: ExtensionInfo, controller: KeiController) {
     val installed = controller.installed[ext.pkg]
-    val followed = controller.followed.contains(ext.pkg)
     val newer = installed != null && ext.code > installed.code && ext.code >= 0
     ElevatedCard(
         modifier = Modifier
@@ -349,24 +418,7 @@ private fun ExtensionCard(ext: ExtensionInfo, controller: KeiController) {
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .padding(4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        ext.lang.uppercase().take(3),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-            }
+            ExtensionIcon(ext, size = 44.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -417,12 +469,75 @@ private fun ExtensionCard(ext: ExtensionInfo, controller: KeiController) {
                     }
                 }
             }
-            IconButton(onClick = { controller.toggleFollow(ext.pkg) }) {
-                Icon(
-                    if (followed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (followed) "Retirer des favoris" else "Suivre cette extension",
-                    tint = if (followed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        }
+    }
+}
+
+/** Compact card for Grid view */
+@Composable
+private fun ExtensionGridCard(ext: ExtensionInfo, controller: KeiController) {
+    val installed = controller.installed[ext.pkg]
+    val newer = installed != null && ext.code > installed.code && ext.code >= 0
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { controller.showDetails(ext) },
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(contentAlignment = Alignment.TopEnd) {
+                ExtensionIcon(ext, size = 52.dp)
+                if (ext.nsfw) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.offset(x = 4.dp, y = (-4).dp)
+                    ) {
+                        Text(
+                            "18+",
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                ext.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "${ext.lang.uppercase()} • v${ext.version}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            if (installed != null) {
+                Spacer(Modifier.height(4.dp))
+                Surface(
+                    color = if (newer) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = if (newer) "MàJ dispo" else "Installée",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (newer) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (newer) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }
@@ -449,7 +564,8 @@ private fun EmptyState(title: String, text: String) {
             Text(
                 text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -462,6 +578,8 @@ private fun ExtensionDetails(controller: KeiController) {
     val scope = rememberCoroutineScope()
     val commits = controller.history
     val displayVersion = if (ext.version == "?") controller.installed[ext.pkg]?.version ?: "?" else ext.version
+
+    // Group commits by version to show clean section headers, but commits are directly displayed sequentially without collapsing!
     val groups = remember(commits) {
         commits.groupBy { it.versionAtCommit ?: "Version non identifiée" }
     }
@@ -485,6 +603,8 @@ private fun ExtensionDetails(controller: KeiController) {
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        ExtensionIcon(ext, size = 56.dp)
+                        Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 "v$displayVersion",
@@ -507,18 +627,11 @@ private fun ExtensionDetails(controller: KeiController) {
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        IconButton(onClick = { controller.toggleFollow(ext.pkg) }) {
-                            Icon(
-                                if (ext.pkg in controller.followed) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Favori",
-                                tint = if (ext.pkg in controller.followed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                         ext.sourcePath?.let { path ->
                             IconButton(onClick = {
                                 context.openBrowser("https://github.com/keiyoushi/extensions-source/tree/main/$path")
                             }) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Code source")
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Code source sur GitHub")
                             }
                         }
                     }
@@ -526,7 +639,7 @@ private fun ExtensionDetails(controller: KeiController) {
             }
             item {
                 Text(
-                    "Historique des modifications",
+                    "Historique des commits",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -542,11 +655,44 @@ private fun ExtensionDetails(controller: KeiController) {
             if (groups.isEmpty() && !controller.loadingHistory && controller.historyError == null) {
                 item { EmptyState("Aucun historique", "Aucune modification Git répertoriée pour ce dossier.") }
             }
+
+            // Directly show all commits in continuous stream, grouped by version sections without collapsing
             groups.forEach { (version, changes) ->
-                item(key = "group-${ext.pkg}-$version") {
-                    VersionGroup(version, changes)
+                item(key = "section-$version") {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (version == "Version non identifiée") "Autres modifications" else "Version $version",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "${changes.size} commit${if (changes.size > 1) "s" else ""}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                items(changes, key = { it.sha }) { change ->
+                    CommitItemCard(change, context)
                 }
             }
+
             if (controller.historyHasMore && !controller.loadingHistory) {
                 item {
                     OutlinedButton(
@@ -562,83 +708,49 @@ private fun ExtensionDetails(controller: KeiController) {
 }
 
 @Composable
-private fun VersionGroup(version: String, changes: List<CommitInfo>) {
-    val context = LocalContext.current
-    var expanded by remember(version) { mutableStateOf(false) }
+private fun CommitItemCard(change: CommitInfo, context: Context) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { context.openBrowser(change.url) },
         shape = RoundedCornerShape(12.dp)
     ) {
-        Column {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (version == "Version non identifiée") "Autres modifications" else "v$version",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        "${changes.size} commit${if (changes.size > 1) "s" else ""}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    change.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(8.dp))
                 Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Réduire" else "Déplier"
+                    Icons.AutoMirrored.Filled.OpenInNew,
+                    "Ouvrir sur GitHub",
+                    Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (expanded) {
-                HorizontalDivider()
-                changes.forEach { change ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { context.openBrowser(change.url) }
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${change.date} · ${change.shortSha}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                change.pullRequest?.let { link ->
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { context.openBrowser(link) },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                change.title,
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Icon(
-                                Icons.AutoMirrored.Filled.OpenInNew,
-                                "Ouvrir sur GitHub",
-                                Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "${change.date} · ${change.shortSha}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            change.pullRequest?.let { link ->
-                                Spacer(Modifier.width(8.dp))
-                                TextButton(
-                                    onClick = { context.openBrowser(link) },
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                                ) {
-                                    Text("PR", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
+                        Text("PR", style = MaterialTheme.typography.labelSmall)
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
         }

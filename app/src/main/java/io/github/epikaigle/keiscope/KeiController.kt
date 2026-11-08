@@ -24,7 +24,7 @@ class KeiController(private val context: Context) : ViewModel() {
         private set
     var installed by mutableStateOf<Map<String, InstalledInfo>>(emptyMap())
         private set
-    var followed by mutableStateOf(preferences.getStringSet("followed", emptySet())?.toSet() ?: emptySet())
+    var isGridView by mutableStateOf(preferences.getBoolean("is_grid_view", false))
         private set
     var loadingCatalog by mutableStateOf(false)
         private set
@@ -61,9 +61,9 @@ class KeiController(private val context: Context) : ViewModel() {
 
     val myExtensions: List<ExtensionInfo>
         get() {
-            val fromCatalog = catalog.filter { it.pkg in installed || it.pkg in followed }
+            val fromCatalog = catalog.filter { it.pkg in installed }
             val known = fromCatalog.mapTo(mutableSetOf()) { it.pkg }
-            val unknown = (installed.keys + followed).filter { it !in known }.map { pkg ->
+            val unknown = installed.keys.filter { it !in known }.map { pkg ->
                 ExtensionInfo(
                     name = pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() },
                     pkg = pkg,
@@ -80,6 +80,11 @@ class KeiController(private val context: Context) : ViewModel() {
         installed = try { repo.installedExtensions() } catch (_: Exception) { emptyMap() }
     }
 
+    fun toggleGridView() {
+        isGridView = !isGridView
+        preferences.edit { putBoolean("is_grid_view", isGridView) }
+    }
+
     suspend fun refreshCatalog(force: Boolean = false) {
         if (loadingCatalog) return
         loadingCatalog = true
@@ -92,11 +97,6 @@ class KeiController(private val context: Context) : ViewModel() {
         } finally {
             loadingCatalog = false
         }
-    }
-
-    fun toggleFollow(pkg: String) {
-        followed = if (pkg in followed) followed - pkg else followed + pkg
-        preferences.edit { putStringSet("followed", followed.toSet()) }
     }
 
     fun showDetails(extension: ExtensionInfo) {
